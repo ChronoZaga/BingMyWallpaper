@@ -43,6 +43,13 @@ namespace BingWallpaperDownloader
         {
             try
             {
+                // "DL" argument downloads the last 7 days of wallpapers to the desktop
+                if (args.Length > 0 && args[0].Equals("DL", StringComparison.OrdinalIgnoreCase))
+                {
+                    DownloadLastSevenDays();
+                    Environment.Exit(0); // Exit with success code
+                }
+
                 // Determine days back (idx) from command-line argument
                 int daysBack = 0;
                 if (args.Length > 0 && int.TryParse(args[0], out int parsedDays))
@@ -134,6 +141,76 @@ namespace BingWallpaperDownloader
                 Console.WriteLine(errorMessage);
                 MessageBox.Show(errorMessage, "Bing Wallpaper Downloader - Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
                 Environment.Exit(1); // Exit with error code
+            }
+        }
+
+        private static void DownloadLastSevenDays()
+        {
+            Console.WriteLine("Downloading Bing's Pictures from the last 7 days to your desktop...");
+
+            // Get desktop directory
+            string desktopPath = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+
+            // Bing API URL for 4K resolution, today plus the 6 days prior
+            string bingApiUrl = "https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=7&mkt=en-US&uhd=1&uhdwidth=3840&uhdheight=2160";
+
+            // Download JSON data
+            string json = ""; // Initialize to avoid unassigned variable error
+            try
+            {
+                using (var client = new WebClient())
+                {
+                    json = client.DownloadString(bingApiUrl);
+                }
+            }
+            catch (WebException webEx)
+            {
+                string errorMessage = $"Failed to download Bing API data from {bingApiUrl}. Error: {webEx.Message}{(webEx.InnerException != null ? $" Inner Error: {webEx.InnerException.Message}" : "")}";
+                Console.WriteLine(errorMessage);
+                MessageBox.Show(errorMessage, "Bing Wallpaper Downloader - Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Environment.Exit(1);
+            }
+
+            // Parse JSON using DataContractJsonSerializer
+            using (var ms = new MemoryStream(Encoding.UTF8.GetBytes(json)))
+            {
+                var serializer = new DataContractJsonSerializer(typeof(BingResponse));
+                var data = (BingResponse)serializer.ReadObject(ms);
+
+                if (data.Images == null || data.Images.Length == 0)
+                {
+                    string errorMessage = "No image data found in Bing API response.";
+                    Console.WriteLine(errorMessage);
+                    MessageBox.Show(errorMessage, "Bing Wallpaper Downloader - Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    Environment.Exit(1); // Exit with error code
+                }
+
+                foreach (var image in data.Images)
+                {
+                    // Extract image URL and filename
+                    string imageUrl = "https://www.bing.com" + image.Url;
+                    string title = CleanFileName(image.Title);
+                    string filename = $"{image.StartDate}-{title}.jpg";
+                    string imagePath = Path.Combine(desktopPath, filename);
+
+                    // Download the 4K image
+                    try
+                    {
+                        using (var client = new WebClient())
+                        {
+                            client.DownloadFile(imageUrl, imagePath);
+                        }
+                    }
+                    catch (WebException webEx)
+                    {
+                        string errorMessage = $"Failed to download image from {imageUrl}. Error: {webEx.Message}{(webEx.InnerException != null ? $" Inner Error: {webEx.InnerException.Message}" : "")}";
+                        Console.WriteLine(errorMessage);
+                        MessageBox.Show(errorMessage, "Bing Wallpaper Downloader - Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        Environment.Exit(1);
+                    }
+                }
+
+                Console.WriteLine("Wallpapers downloaded successfully!");
             }
         }
 
